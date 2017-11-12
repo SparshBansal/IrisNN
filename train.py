@@ -2,9 +2,10 @@ import tensorflow as tf
 import numpy as np
 
 iris_file_path = './data.csv'
+logdir = './logs/4/'
 
 BATCH_SIZE = 5
-num_epochs = 10
+num_epochs = 500
 
 # function to retreive data and label tensors
 # setup input pipeline for iris
@@ -48,6 +49,11 @@ def _add_layer(features,input_channels,output_channels,scope):
         bias = tf.get_variable('bias',initializer=initb)
 
         out = tf.matmul(features,weight) + bias
+
+        tf.summary.histogram('weight',weight)
+        tf.summary.histogram('bias',bias)
+        tf.summary.histogram('out',out)
+
     return out
 
 def neural_network(features):
@@ -66,11 +72,9 @@ def train():
     
     sess = tf.Session()
 
-    # restore model if present
-
     # declare placeholder for features and labels
-    X = tf.placeholder(tf.float32,[None,4])
-    Y = tf.placeholder(tf.float32,[None,3])
+    X = tf.placeholder(tf.float32,[None,4], name='features')
+    Y = tf.placeholder(tf.float32,[None,3], name='labels')
 
     # get the data and labels
     features ,labels = get_data()
@@ -80,18 +84,37 @@ def train():
         prediction= neural_network(X)
 
     # define the loss
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y,logits=prediction))
-
-    train_step = tf.train.AdamOptimizer().minimize(loss)
+    with tf.name_scope('loss'):
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=Y,logits=prediction))
+        tf.summary.scalar('loss',loss)
+    
+    with tf.name_scope('train'):
+        train_step = tf.train.AdamOptimizer().minimize(loss)
     
     num_batches = len(features)/BATCH_SIZE
 
     sess.run(tf.global_variables_initializer())
+
+    # write our graph for tensorboard
+    writer= tf.summary.FileWriter(logdir)
+    writer.add_graph(sess.graph)
+    
+
+    merged = tf.summary.merge_all()
+
     for epoch in range(num_epochs):
         for batch in range(num_batches):
             # get the next batch
             batchX,batchY = _get_next_batch(features,labels,batch)
+
+            # write all summaries to tensorboard log-dir
+            if (batch%5==0):
+                s = sess.run(merged, feed_dict={X:batchX,Y:batchY})
+                writer.add_summary(s)
+
+            # run the graph for training 
             _,epoch_loss= sess.run([train_step,loss],feed_dict={X:batchX,Y:batchY})
+
 
             print "Epoch " + str(epoch) + "/" + str(num_epochs) + "; Batch " + str(batch) + "/" + str(num_batches) + " completed ; loss : " + str(epoch_loss)
 
